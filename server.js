@@ -7,18 +7,17 @@ const dotenv = require("dotenv");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const contactMessageRoutes = require("./routes/contactMessageRoutes");
+const smartCardRoutes = require("./routes/index");
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
-// Session configuration
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
@@ -31,14 +30,13 @@ app.use(
   })
 );
 
-// Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Routes
 app.use("/auth", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api", contactMessageRoutes);
+app.use("/api", smartCardRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running!");

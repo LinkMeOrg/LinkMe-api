@@ -8,6 +8,18 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const FacebookStrategy = require("passport-facebook").Strategy;
 const crypto = require("crypto");
 
+// Create transporter once at module level (reused for all emails)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  pool: true, // Enable connection pooling for better performance
+  maxConnections: 5,
+  maxMessages: 10,
+});
+
 // Google Strategy
 passport.use(
   new GoogleStrategy(
@@ -82,19 +94,40 @@ const generateToken = (user) =>
   jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "1w" });
 
 const sendOtpEmail = async (email, otp) => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
   await transporter.sendMail({
     to: email,
     from: process.env.EMAIL_USER,
     subject: "Your OTP for email verification",
     text: `Your OTP code is: ${otp}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Email Verification</h2>
+        <p>Your OTP code is:</p>
+        <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
+        <p>This code will expire in 10 minutes.</p>
+      </div>
+    `,
+  });
+};
+
+const sendPasswordResetEmail = async (email, resetToken) => {
+  await transporter.sendMail({
+    to: email,
+    from: process.env.EMAIL_USER,
+    subject: "Password Reset",
+    text: `Reset your password here: http://localhost:5173/reset-password/${resetToken}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Password Reset Request</h2>
+        <p>Click the button below to reset your password:</p>
+        <a href="http://localhost:5173/reset-password/${resetToken}" 
+           style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">
+          Reset Password
+        </a>
+        <p>Or copy this link: http://localhost:5173/reset-password/${resetToken}</p>
+        <p>This link will expire in 1 hour.</p>
+      </div>
+    `,
   });
 };
 
@@ -116,10 +149,12 @@ const authController = {
       });
 
       user.otp = otp;
-
       await user.save();
 
-      await sendOtpEmail(email, otp);
+      // Send email asynchronously (don't block response)
+      sendOtpEmail(email, otp).catch((error) => {
+        console.error("Error sending OTP email:", error);
+      });
 
       res
         .status(201)
@@ -172,7 +207,10 @@ const authController = {
       user.otp = otp;
       await user.save();
 
-      await sendOtpEmail(email, otp);
+      // Send email asynchronously
+      sendOtpEmail(email, otp).catch((error) => {
+        console.error("Error sending OTP email:", error);
+      });
 
       res
         .status(200)
@@ -217,19 +255,9 @@ const authController = {
       user.resetPasswordExpires = Date.now() + 3600000;
       await user.save();
 
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-
-      await transporter.sendMail({
-        to: user.email,
-        from: process.env.EMAIL_USER,
-        subject: "Password Reset",
-        text: `Reset your password here: http://localhost:5173/reset-password/${resetToken}`,
+      // Send email asynchronously
+      sendPasswordResetEmail(user.email, resetToken).catch((error) => {
+        console.error("Error sending password reset email:", error);
       });
 
       res.status(200).json({ message: "Password reset email sent" });

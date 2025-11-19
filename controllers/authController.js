@@ -8,19 +8,17 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const FacebookStrategy = require("passport-facebook").Strategy;
 const crypto = require("crypto");
 
-// Create transporter once at module level (reused for all emails)
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  pool: true, // Enable connection pooling for better performance
+  pool: true,
   maxConnections: 5,
   maxMessages: 10,
 });
 
-// Google Strategy
 passport.use(
   new GoogleStrategy(
     {
@@ -35,7 +33,9 @@ passport.use(
         if (!user) {
           user = await User.create({
             googleId: profile.id,
-            name: profile.displayName,
+            firstName: profile.displayName,
+            secondName: null,
+            lastName: null,
             email: profile.emails?.[0]?.value,
             role: "user",
           });
@@ -49,7 +49,6 @@ passport.use(
   )
 );
 
-// Facebook Strategy
 passport.use(
   new FacebookStrategy(
     {
@@ -65,7 +64,9 @@ passport.use(
         if (!user) {
           user = await User.create({
             facebookId: profile.id,
-            name: profile.displayName,
+            firstName: profile.displayName, // UPDATED
+            secondName: null,
+            lastName: null,
             email: profile.emails?.[0]?.value || `${profile.id}@facebook.com`,
             role: "user",
           });
@@ -79,7 +80,6 @@ passport.use(
   )
 );
 
-// Session handling
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
   try {
@@ -134,38 +134,70 @@ const sendPasswordResetEmail = async (email, resetToken) => {
 const authController = {
   async signUp(req, res) {
     try {
-      const { name, email, password } = req.body;
+      const {
+        firstName,
+        secondName,
+        lastName,
+        email,
+        password,
+        phoneNumber,
+        dateOfBirth,
+      } = req.body;
 
-      const userExists = await User.findOne({ where: { email: email.trim() } });
+      if (!firstName || !email || !password || !phoneNumber || !dateOfBirth) {
+        return res.status(400).json({
+          message:
+            "firstName, email, password, phoneNumber, and dateOfBirth are required",
+        });
+      }
+
+      const dob = new Date(dateOfBirth);
+      if (isNaN(dob.getTime())) {
+        return res.status(400).json({ message: "Invalid dateOfBirth format" });
+      }
+
+      if (!/^\d{7,15}$/.test(phoneNumber)) {
+        return res.status(400).json({
+          message:
+            "Invalid phone number format. Use digits only, length 7–15 characters.",
+        });
+      }
+
+      const userExists = await User.findOne({
+        where: { email: email.trim() },
+      });
       if (userExists)
         return res.status(400).json({ message: "User already exists" });
 
       const otp = crypto.randomInt(100000, 999999).toString();
 
       const user = await User.create({
-        name,
+        firstName: firstName.trim(),
+        secondName: secondName ? secondName.trim() : null,
+        lastName: lastName ? lastName.trim() : null,
         email: email.trim(),
         password: password.trim(),
+        phoneNumber: phoneNumber.trim(),
+        dateOfBirth: dob,
+        isVerified: false,
+        otp,
       });
 
-      user.otp = otp;
-      await user.save();
-
-      // Send email asynchronously (don't block response)
       sendOtpEmail(email, otp).catch((error) => {
         console.error("Error sending OTP email:", error);
       });
 
-      res
-        .status(201)
-        .json({ message: "Signup successful. Please verify your OTP." });
+      return res.status(201).json({
+        message: "Signup successful. Please verify your OTP.",
+      });
     } catch (error) {
-      res
-        .status(500)
-        .json({ message: "Error signing up", error: error.message });
+      console.error("Signup error:", error);
+      return res.status(500).json({
+        message: "Error signing up",
+        error: error.message,
+      });
     }
   },
-
   async verifyOtp(req, res) {
     try {
       const { email, otp } = req.body;
@@ -177,7 +209,7 @@ const authController = {
         return res.status(400).json({ message: "Invalid OTP" });
       }
 
-      user.isEmailVerified = true;
+      user.isVerified = true;
       user.otp = null;
       await user.save();
 
@@ -207,7 +239,6 @@ const authController = {
       user.otp = otp;
       await user.save();
 
-      // Send email asynchronously
       sendOtpEmail(email, otp).catch((error) => {
         console.error("Error sending OTP email:", error);
       });
@@ -255,7 +286,6 @@ const authController = {
       user.resetPasswordExpires = Date.now() + 3600000;
       await user.save();
 
-      // Send email asynchronously
       sendPasswordResetEmail(user.email, resetToken).catch((error) => {
         console.error("Error sending password reset email:", error);
       });
@@ -298,7 +328,6 @@ const authController = {
     }
   },
 
-  // Google auth
   googleAuth: passport.authenticate("google", { scope: ["profile", "email"] }),
   googleAuthCallback: [
     passport.authenticate("google", { failureRedirect: "/login" }),
@@ -309,7 +338,7 @@ const authController = {
 
       const user = {
         id: req.user.id,
-        name: req.user.name,
+        firstName: req.user.firstName, // UPDATED
         email: req.user.email,
         role: req.user.role,
       };
@@ -321,7 +350,6 @@ const authController = {
     },
   ],
 
-  // Facebook auth
   facebookAuth: passport.authenticate("facebook", { scope: ["email"] }),
   facebookAuthCallback: [
     passport.authenticate("facebook", { failureRedirect: "/login" }),
@@ -332,7 +360,7 @@ const authController = {
 
       const user = {
         id: req.user.id,
-        name: req.user.name,
+        firstName: req.user.firstName, // UPDATED
         email: req.user.email,
         role: req.user.role,
       };

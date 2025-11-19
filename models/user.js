@@ -6,9 +6,35 @@ module.exports = (sequelize, DataTypes) => {
   class User extends Model {
     static associate(models) {}
   }
+
   User.init(
     {
-      name: DataTypes.STRING,
+      firstName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      secondName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      lastName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      phoneNumber: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+
+      dateOfBirth: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+
+      isVerified: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
       email: DataTypes.STRING,
       password: DataTypes.STRING,
       role: {
@@ -16,22 +42,27 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: "user",
         allowNull: false,
       },
+
       otp: {
         type: DataTypes.STRING,
         allowNull: true,
       },
+
       googleId: {
         type: DataTypes.STRING,
         allowNull: true,
       },
+
       facebookId: {
         type: DataTypes.STRING,
         allowNull: true,
       },
+
       resetPasswordToken: {
         type: DataTypes.STRING,
         allowNull: true,
       },
+
       resetPasswordExpires: {
         type: DataTypes.DATE,
         allowNull: true,

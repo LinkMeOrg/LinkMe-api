@@ -9,8 +9,29 @@ module.exports = {
         primaryKey: true,
         type: Sequelize.INTEGER,
       },
-      name: {
+      firstName: {
         type: Sequelize.STRING,
+        allowNull: true,
+      },
+      secondName: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      lastName: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      phoneNumber: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      dateOfBirth: {
+        type: Sequelize.DATEONLY,
+        allowNull: true,
+      },
+      isVerified: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
       },
       email: {
         type: Sequelize.STRING,
@@ -43,6 +64,7 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true,
       },
+
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE,
@@ -53,6 +75,7 @@ module.exports = {
       },
     });
   },
+
   async down(queryInterface, Sequelize) {
     await queryInterface.dropTable("Users");
   },

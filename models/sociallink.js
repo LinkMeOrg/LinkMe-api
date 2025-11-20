@@ -190,7 +190,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 0,
         validate: {
           min: {
-            args: 0,
+            args: [1],
             msg: "Order must be a positive number",
           },
         },
@@ -200,7 +200,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 0,
         validate: {
           min: {
-            args: 0,
+            args: [0],
             msg: "Click count cannot be negative",
           },
         },

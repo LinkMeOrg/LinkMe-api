@@ -20,7 +20,6 @@ exports.createSocialLink = async (req, res) => {
     const userId = req.user.id;
     const { profileId, platform, url, label, isVisible } = req.body;
 
-    // Validate required fields
     if (!profileId || !platform || !url) {
       return res.status(400).json({
         success: false,
@@ -28,7 +27,6 @@ exports.createSocialLink = async (req, res) => {
       });
     }
 
-    // Verify profile ownership
     const profile = await validateProfileOwnership(profileId, userId);
     if (!profile) {
       return res.status(404).json({
@@ -37,11 +35,9 @@ exports.createSocialLink = async (req, res) => {
       });
     }
 
-    // Check if link already exists for this platform
     const existingLink = await SocialLink.findOne({
       where: { profileId, platform },
     });
-
     if (existingLink) {
       return res.status(400).json({
         success: false,
@@ -49,20 +45,21 @@ exports.createSocialLink = async (req, res) => {
       });
     }
 
-    // Get next order number
-    const maxOrder = await SocialLink.max("order", {
-      where: { profileId },
-    });
+    // Get next order safely
+    let maxOrder = await SocialLink.max("order", { where: { profileId } });
+    maxOrder = Number(maxOrder) || 0;
 
-    // Create social link
+    // Ensure order >= 1 to satisfy validator
+    const nextOrder = maxOrder + 1;
+
     const socialLink = await SocialLink.create({
       profileId,
       platform,
       url: url.trim(),
-      label,
+      label: label?.trim() || null,
       isVisible: isVisible !== false,
-      order: (maxOrder || 0) + 1,
-      clickCount: 0,
+      order: nextOrder, // numeric and >= 1
+      clickCount: 0, // numeric and >= 0
     });
 
     res.status(201).json({
@@ -72,6 +69,15 @@ exports.createSocialLink = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating social link:", error);
+
+    if (error.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: error.errors.map((e) => e.message),
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Error creating social link",

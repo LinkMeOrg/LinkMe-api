@@ -273,6 +273,39 @@ const authController = {
     }
   },
 
+  async adminLogin(req, res) {
+    try {
+      const { email, password } = req.body;
+
+      const user = await User.findOne({ where: { email: email.trim() } });
+
+      if (!user || !(await user.comparePassword(password.trim()))) {
+        return res.status(400).json({ message: "Invalid credentials" });
+      }
+
+      if (user.role !== "admin") {
+        return res
+          .status(403)
+          .json({ message: "Access denied. Not an admin." });
+      }
+
+      const token = generateToken(user);
+
+      res.status(200).json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Error logging in as admin",
+        error: error.message,
+      });
+    }
+  },
   async forgotPassword(req, res) {
     try {
       const { email } = req.body;

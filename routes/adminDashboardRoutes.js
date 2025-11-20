@@ -7,7 +7,7 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
-router.get("/stats", adminDashboardController.getDashboardStats);
+router.get("/analytics/stats", adminDashboardController.getDashboardStats);
 router.get("/recent-activity", adminDashboardController.getRecentActivity);
 
 router.get(

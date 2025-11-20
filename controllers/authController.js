@@ -257,8 +257,17 @@ const authController = {
     try {
       const { email, password } = req.body;
       const user = await User.findOne({ where: { email: email.trim() } });
+
       if (!user || !(await user.comparePassword(password.trim()))) {
         return res.status(400).json({ message: "Invalid credentials" });
+      }
+
+      // Check if the user is verified
+      if (!user.isVerified) {
+        // or user.verified depending on your model
+        return res
+          .status(400)
+          .json({ message: "Please verify your email first" });
       }
 
       const token = generateToken(user);
@@ -272,7 +281,6 @@ const authController = {
         .json({ message: "Error logging in", error: error.message });
     }
   },
-
   async adminLogin(req, res) {
     try {
       const { email, password } = req.body;

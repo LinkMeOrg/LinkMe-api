@@ -5,11 +5,13 @@ const profileRoutes = require("./profileRoutes");
 const socialLinkRoutes = require("./socialLinkRoutes");
 const analyticsRoutes = require("./analyticsRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
+const adminDashboardRoutes = require("./adminDashboardRoutes");
 
 router.use("/profiles", profileRoutes);
 router.use("/social-links", socialLinkRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/dashboard", dashboardRoutes);
+router.use("/admin/dashboard", adminDashboardRoutes);
 
 router.get("/", (req, res) => {
   res.status(200).json({
@@ -36,6 +38,11 @@ router.get("/", (req, res) => {
         base: "/api/dashboard",
         description: "Dashboard statistics endpoints",
         count: 3,
+      },
+      adminDashboard: {
+        base: "/api/admin/dashboard",
+        description: "Admin dashboard statistics endpoints",
+        count: 2,
       },
     },
     documentation: "/api/docs",

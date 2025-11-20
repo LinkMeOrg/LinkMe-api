@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const contactMessageRoutes = require("./routes/contactMessageRoutes");
+const adminDashboardRoutes = require("./routes/adminDashboardRoutes");
 const smartCardRoutes = require("./routes/index");
 
 dotenv.config();
@@ -37,6 +38,7 @@ app.use("/auth", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api", contactMessageRoutes);
 app.use("/api", smartCardRoutes);
+app.use("/api/admin/dashboard", adminDashboardRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running!");

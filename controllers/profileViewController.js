@@ -1,12 +1,8 @@
-// controllers/profileViewController.js
-const { ProfileView, Profile } = require("../models");
+const { ProfileView, Profile, SocialLink } = require("../models");
 const { Op } = require("sequelize");
 const geoip = require("geoip-lite");
 const useragent = require("useragent");
 
-// ==================== HELPER FUNCTIONS ====================
-
-// Parse user agent to get device and browser info
 const parseUserAgent = (userAgentString) => {
   const agent = useragent.parse(userAgentString);
 
@@ -16,10 +12,8 @@ const parseUserAgent = (userAgentString) => {
   };
 };
 
-// Get geographic info from IP
 const getGeoInfo = (ip) => {
   try {
-    // Skip private/local IPs
     if (
       !ip ||
       ip === "::1" ||
@@ -46,7 +40,6 @@ const getGeoInfo = (ip) => {
   }
 };
 
-// Get client IP from request
 const getClientIP = (req) => {
   return (
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
@@ -57,13 +50,11 @@ const getClientIP = (req) => {
   );
 };
 
-// ==================== TRACK PROFILE VIEW (PUBLIC) ====================
 exports.trackProfileView = async (req, res) => {
   try {
     const { slug } = req.params;
     const { source = "direct" } = req.body;
 
-    // Find profile
     const profile = await Profile.findOne({
       where: { slug, isActive: true },
     });
@@ -75,18 +66,13 @@ exports.trackProfileView = async (req, res) => {
       });
     }
 
-    // Get client info
     const ip = getClientIP(req);
     const userAgent = req.headers["user-agent"] || "";
     const referrer = req.headers.referer || req.headers.referrer || null;
 
-    // Parse user agent
     const { device, browser } = parseUserAgent(userAgent);
-
-    // Get geographic info
     const { country, city } = getGeoInfo(ip);
 
-    // Track view
     const view = await ProfileView.create({
       profileId: profile.id,
       viewerIp: ip,
@@ -100,7 +86,6 @@ exports.trackProfileView = async (req, res) => {
       viewedAt: new Date(),
     });
 
-    // Increment profile view count
     await profile.increment("viewCount");
 
     res.status(201).json({
@@ -122,14 +107,12 @@ exports.trackProfileView = async (req, res) => {
   }
 };
 
-// ==================== GET PROFILE ANALYTICS ====================
 exports.getProfileAnalytics = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
-    const { startDate, endDate, days = 30 } = req.query;
+    const { days = 30 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -141,40 +124,111 @@ exports.getProfileAnalytics = async (req, res) => {
       });
     }
 
-    // Calculate date range
-    const end = endDate ? new Date(endDate) : new Date();
-    const start = startDate
-      ? new Date(startDate)
-      : new Date(end.getTime() - parseInt(days) * 24 * 60 * 60 * 1000);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get comprehensive analytics
-    const analytics = await ProfileView.getProfileAnalytics(profileId, {
-      startDate: start,
-      endDate: end,
+    const totalViews = await ProfileView.count({
+      where: {
+        profileId,
+        viewedAt: {
+          [Op.gte]: startDate,
+        },
+      },
     });
 
-    // Get views over time
-    const viewsOverTime = await ProfileView.getViewsOverTime(
-      profileId,
-      parseInt(days)
-    );
+    const viewsBySource = await ProfileView.findAll({
+      where: {
+        profileId,
+        viewedAt: {
+          [Op.gte]: startDate,
+        },
+      },
+      attributes: [
+        "viewSource",
+        [
+          ProfileView.sequelize.fn("COUNT", ProfileView.sequelize.col("id")),
+          "count",
+        ],
+      ],
+      group: ["viewSource"],
+      raw: true,
+    });
+
+    const viewsByDevice = await ProfileView.findAll({
+      where: {
+        profileId,
+        viewedAt: {
+          [Op.gte]: startDate,
+        },
+        device: {
+          [Op.ne]: null,
+        },
+      },
+      attributes: [
+        "device",
+        [
+          ProfileView.sequelize.fn("COUNT", ProfileView.sequelize.col("id")),
+          "count",
+        ],
+      ],
+      group: ["device"],
+      raw: true,
+    });
+
+    const viewsByCountry = await ProfileView.findAll({
+      where: {
+        profileId,
+        viewedAt: {
+          [Op.gte]: startDate,
+        },
+        viewerCountry: {
+          [Op.ne]: null,
+        },
+      },
+      attributes: [
+        "viewerCountry",
+        [
+          ProfileView.sequelize.fn("COUNT", ProfileView.sequelize.col("id")),
+          "count",
+        ],
+      ],
+      group: ["viewerCountry"],
+      order: [[ProfileView.sequelize.literal("count"), "DESC"]],
+      raw: true,
+    });
+
+    const recentViews = await ProfileView.findAll({
+      where: { profileId },
+      order: [["viewedAt", "DESC"]],
+      limit: 20,
+      attributes: [
+        "device",
+        "viewSource",
+        "viewerCity",
+        "viewerCountry",
+        "viewedAt",
+        "browser",
+        "referrer",
+      ],
+    });
+
+    const socialLinks = await SocialLink.findAll({
+      where: { profileId },
+      attributes: ["id", "platform", "url", "clickCount", "label"],
+      order: [["clickCount", "DESC"]],
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        period: {
-          start,
-          end,
-          days: parseInt(days),
+        analytics: {
+          totalViews: totalViews,
+          viewsBySource: viewsBySource,
+          viewsByDevice: viewsByDevice,
+          viewsByCountry: viewsByCountry,
+          recentViews: recentViews,
         },
-        profileInfo: {
-          id: profile.id,
-          name: profile.name,
-          slug: profile.slug,
-          totalViewCount: profile.viewCount,
-        },
-        analytics,
-        viewsOverTime,
+        socialLinks: socialLinks,
       },
     });
   } catch (error) {
@@ -187,14 +241,12 @@ exports.getProfileAnalytics = async (req, res) => {
   }
 };
 
-// ==================== GET RECENT VIEWS ====================
 exports.getRecentViews = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { limit = 20, offset = 0 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -242,14 +294,12 @@ exports.getRecentViews = async (req, res) => {
   }
 };
 
-// ==================== GET VIEWS BY SOURCE ====================
 exports.getViewsBySource = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { days = 30 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -261,7 +311,6 @@ exports.getViewsBySource = async (req, res) => {
       });
     }
 
-    // Calculate start date
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
@@ -283,7 +332,6 @@ exports.getViewsBySource = async (req, res) => {
       raw: true,
     });
 
-    // Calculate percentages
     const total = viewsBySource.reduce(
       (sum, item) => sum + parseInt(item.count),
       0
@@ -312,14 +360,12 @@ exports.getViewsBySource = async (req, res) => {
   }
 };
 
-// ==================== GET VIEWS BY LOCATION ====================
 exports.getViewsByLocation = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { days = 30, limit = 10 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -331,11 +377,9 @@ exports.getViewsByLocation = async (req, res) => {
       });
     }
 
-    // Calculate start date
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get views by country
     const viewsByCountry = await ProfileView.findAll({
       where: {
         profileId,
@@ -364,7 +408,6 @@ exports.getViewsByLocation = async (req, res) => {
       raw: true,
     });
 
-    // Get views by city
     const viewsByCity = await ProfileView.findAll({
       where: {
         profileId,
@@ -418,14 +461,12 @@ exports.getViewsByLocation = async (req, res) => {
   }
 };
 
-// ==================== GET VIEWS BY DEVICE ====================
 exports.getViewsByDevice = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { days = 30 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -437,11 +478,9 @@ exports.getViewsByDevice = async (req, res) => {
       });
     }
 
-    // Calculate start date
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get views by device
     const viewsByDevice = await ProfileView.findAll({
       where: {
         profileId,
@@ -469,7 +508,6 @@ exports.getViewsByDevice = async (req, res) => {
       raw: true,
     });
 
-    // Get views by browser
     const viewsByBrowser = await ProfileView.findAll({
       where: {
         profileId,
@@ -531,14 +569,12 @@ exports.getViewsByDevice = async (req, res) => {
   }
 };
 
-// ==================== GET VIEWS OVER TIME ====================
 exports.getViewsOverTime = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { days = 30 } = req.query;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -550,10 +586,43 @@ exports.getViewsOverTime = async (req, res) => {
       });
     }
 
-    const viewsOverTime = await ProfileView.getViewsOverTime(
-      profileId,
-      parseInt(days)
-    );
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+
+    const viewsOverTime = await ProfileView.findAll({
+      where: {
+        profileId,
+        viewedAt: {
+          [Op.gte]: startDate,
+        },
+      },
+      attributes: [
+        [
+          ProfileView.sequelize.fn(
+            "DATE",
+            ProfileView.sequelize.col("viewedAt")
+          ),
+          "date",
+        ],
+        [
+          ProfileView.sequelize.fn("COUNT", ProfileView.sequelize.col("id")),
+          "count",
+        ],
+      ],
+      group: [
+        ProfileView.sequelize.fn("DATE", ProfileView.sequelize.col("viewedAt")),
+      ],
+      order: [
+        [
+          ProfileView.sequelize.fn(
+            "DATE",
+            ProfileView.sequelize.col("viewedAt")
+          ),
+          "ASC",
+        ],
+      ],
+      raw: true,
+    });
 
     res.status(200).json({
       success: true,
@@ -572,13 +641,11 @@ exports.getViewsOverTime = async (req, res) => {
   }
 };
 
-// ==================== GET ALL USER ANALYTICS ====================
 exports.getAllUserAnalytics = async (req, res) => {
   try {
     const userId = req.user.id;
     const { days = 30 } = req.query;
 
-    // Get all user profiles
     const profiles = await Profile.findAll({
       where: { userId },
       attributes: ["id", "name", "slug", "profileType", "viewCount"],
@@ -596,12 +663,9 @@ exports.getAllUserAnalytics = async (req, res) => {
     }
 
     const profileIds = profiles.map((p) => p.id);
-
-    // Calculate start date
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get total views in period
     const totalViewsInPeriod = await ProfileView.count({
       where: {
         profileId: profileIds,
@@ -611,7 +675,6 @@ exports.getAllUserAnalytics = async (req, res) => {
       },
     });
 
-    // Get views by source across all profiles
     const viewsBySource = await ProfileView.findAll({
       where: {
         profileId: profileIds,
@@ -630,7 +693,6 @@ exports.getAllUserAnalytics = async (req, res) => {
       raw: true,
     });
 
-    // Get analytics for each profile
     const profileAnalytics = await Promise.all(
       profiles.map(async (profile) => {
         const viewsInPeriod = await ProfileView.count({
@@ -677,14 +739,12 @@ exports.getAllUserAnalytics = async (req, res) => {
   }
 };
 
-// ==================== DELETE OLD VIEWS (CLEANUP) ====================
 exports.deleteOldViews = async (req, res) => {
   try {
     const userId = req.user.id;
     const { profileId } = req.params;
     const { daysToKeep = 90 } = req.body;
 
-    // Verify profile ownership
     const profile = await Profile.findOne({
       where: { id: profileId, userId },
     });
@@ -696,11 +756,9 @@ exports.deleteOldViews = async (req, res) => {
       });
     }
 
-    // Calculate cutoff date
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - parseInt(daysToKeep));
 
-    // Delete old views
     const deletedCount = await ProfileView.destroy({
       where: {
         profileId,

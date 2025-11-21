@@ -117,10 +117,6 @@ const changeUserPassword = async (req, res) => {
 };
 
 // ============= NEW ADMIN FUNCTIONS =============
-// ============= Just for hala alissawi =============
-// ============= Just for hala alissawi =============
-// ============= Just for hala alissawi =============
-// ============= Just for hala alissawi =============
 
 const getAllUsersDataAdmin = async (req, res) => {
   try {

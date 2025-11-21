@@ -156,10 +156,10 @@ const authController = {
         return res.status(400).json({ message: "Invalid dateOfBirth format" });
       }
 
-      if (!/^\d{7,15}$/.test(phoneNumber)) {
+      if (!/^\+?\d{7,15}$/.test(phoneNumber)) {
         return res.status(400).json({
           message:
-            "Invalid phone number format. Use digits only, length 7–15 characters.",
+            "Invalid phone number format. Use digits only, optionally start with '+', length 7–15 digits.",
         });
       }
 
@@ -198,6 +198,7 @@ const authController = {
       });
     }
   },
+
   async verifyOtp(req, res) {
     try {
       const { email, otp } = req.body;
@@ -234,8 +235,13 @@ const authController = {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const otp = crypto.randomInt(100000, 999999).toString();
+      if (user.isVerified) {
+        return res.status(400).json({
+          message: "Your account is already verified. No need to resend OTP.",
+        });
+      }
 
+      const otp = crypto.randomInt(100000, 999999).toString();
       user.otp = otp;
       await user.save();
 
@@ -243,13 +249,14 @@ const authController = {
         console.error("Error sending OTP email:", error);
       });
 
-      res
-        .status(200)
-        .json({ message: "OTP resent successfully. Please check your email." });
+      res.status(200).json({
+        message: "OTP resent successfully. Please check your email.",
+      });
     } catch (error) {
-      res
-        .status(500)
-        .json({ message: "Error resending OTP", error: error.message });
+      res.status(500).json({
+        message: "Error resending OTP",
+        error: error.message,
+      });
     }
   },
 

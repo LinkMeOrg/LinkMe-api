@@ -94,6 +94,33 @@ exports.createProfile = async (req, res) => {
 
     const qrCodeUrl = await generateAndUploadQR(profileUrl, userId);
 
+    // ----------------- fix: define parsedLinks here -----------------
+    let parsedLinks = [];
+    if (socialLinks) {
+      parsedLinks =
+        typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
+    }
+
+    const urlRegex = /^https?:\/\//i; // must start with http:// or https://
+
+    // Validate social links before creating the profile
+    if (parsedLinks.length > 0) {
+      for (const link of parsedLinks) {
+        if (
+          link.platform &&
+          link.platform !== "email" &&
+          link.platform !== "phone" &&
+          (!link.url || !urlRegex.test(link.url.trim()))
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid URL for platform ${link.platform}: ${link.url}`,
+          });
+        }
+      }
+    }
+
+    // Create profile
     const profile = await Profile.create({
       userId,
       profileType,
@@ -113,33 +140,21 @@ exports.createProfile = async (req, res) => {
       viewCount: 0,
     });
 
-    if (socialLinks) {
-      let parsedLinks = socialLinks;
+    // Create social links after validation
+    if (parsedLinks.length > 0) {
+      const linksToCreate = parsedLinks
+        .filter((link) => link.url && link.url.trim() && link.platform)
+        .map((link, index) => ({
+          profileId: profile.id,
+          platform: link.platform,
+          url: link.url.trim(),
+          label: link.label || null,
+          isVisible: link.isVisible !== false,
+          order: index + 1,
+        }));
 
-      if (typeof socialLinks === "string") {
-        try {
-          parsedLinks = JSON.parse(socialLinks);
-        } catch (e) {
-          console.error("Error parsing social links:", e);
-          parsedLinks = [];
-        }
-      }
-
-      if (Array.isArray(parsedLinks) && parsedLinks.length > 0) {
-        const linksToCreate = parsedLinks
-          .filter((link) => link.url && link.url.trim() && link.platform)
-          .map((link, index) => ({
-            profileId: profile.id,
-            platform: link.platform,
-            url: link.url.trim(),
-            label: link.label || null,
-            isVisible: link.isVisible !== false,
-            order: index + 1,
-          }));
-
-        if (linksToCreate.length > 0) {
-          await SocialLink.bulkCreate(linksToCreate);
-        }
+      if (linksToCreate.length > 0) {
+        await SocialLink.bulkCreate(linksToCreate);
       }
     }
 
@@ -171,12 +186,8 @@ exports.createProfile = async (req, res) => {
 exports.getUserProfiles = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { includeInactive } = req.query;
 
     const whereClause = { userId };
-    if (!includeInactive || includeInactive === "false") {
-      whereClause.isActive = true;
-    }
 
     const profiles = await Profile.findAll({
       where: whereClause,

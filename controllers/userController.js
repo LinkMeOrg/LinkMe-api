@@ -148,8 +148,12 @@ const getAllUsersDataAdmin = async (req, res) => {
 
     // Verification filter
     if (verified !== "") {
-      whereClause.isVerified = verified === "true";
+      const v = verified.trim().toLowerCase();
+      if (v === "true") whereClause.isVerified = true;
+      else if (v === "false") whereClause.isVerified = false;
     }
+
+    console.log("WHERE CLAUSE:", whereClause);
 
     const { count, rows: users } = await User.findAndCountAll({
       where: whereClause,

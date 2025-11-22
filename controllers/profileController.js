@@ -94,7 +94,6 @@ exports.createProfile = async (req, res) => {
 
     const qrCodeUrl = await generateAndUploadQR(profileUrl, userId);
 
-    // ----------------- fix: define parsedLinks here -----------------
     let parsedLinks = [];
     if (socialLinks) {
       parsedLinks =
@@ -106,16 +105,48 @@ exports.createProfile = async (req, res) => {
     // Validate social links before creating the profile
     if (parsedLinks.length > 0) {
       for (const link of parsedLinks) {
-        if (
-          link.platform &&
-          link.platform !== "email" &&
-          link.platform !== "phone" &&
-          (!link.url || !urlRegex.test(link.url.trim()))
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: `Invalid URL for platform ${link.platform}: ${link.url}`,
-          });
+        if (!link.platform) continue;
+
+        const trimmedUrl = link.url ? link.url.trim() : "";
+
+        if (link.platform === "whatsapp") {
+          // WhatsApp can be a link or phone number
+          const whatsappUrlRegex =
+            /^https?:\/\/(wa\.me|api\.whatsapp\.com)\/\d+$/i;
+          const phoneRegex = /^\+?\d{7,15}$/; // basic phone number check
+
+          if (
+            !whatsappUrlRegex.test(trimmedUrl) &&
+            !phoneRegex.test(trimmedUrl)
+          ) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid WhatsApp link or number: ${link.url}`,
+            });
+          }
+
+          // Normalize phone number to wa.me link
+          if (phoneRegex.test(trimmedUrl)) {
+            link.url = `https://wa.me/${trimmedUrl.replace(/\D/g, "")}`;
+          }
+        } else if (link.platform === "email") {
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(trimmedUrl)) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid email address: ${link.url}`,
+            });
+          }
+        } else if (link.platform !== "phone") {
+          // Regular URL validation for other platforms
+          const urlRegex = /^https?:\/\//i;
+          if (!trimmedUrl || !urlRegex.test(trimmedUrl)) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid URL for platform ${link.platform}: ${link.url}`,
+            });
+          }
         }
       }
     }

@@ -131,6 +131,47 @@ const sendPasswordResetEmail = async (email, resetToken) => {
   });
 };
 
+const validatePassword = (password) => {
+  const minLength = 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+  if (password.length < minLength) {
+    return {
+      isValid: false,
+      message: "Password must be at least 8 characters long",
+    };
+  }
+  if (!hasUpperCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one uppercase letter",
+    };
+  }
+  if (!hasLowerCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one lowercase letter",
+    };
+  }
+  if (!hasNumber) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one number",
+    };
+  }
+  if (!hasSpecialChar) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one special character",
+    };
+  }
+
+  return { isValid: true };
+};
+
 const authController = {
   async signUp(req, res) {
     try {
@@ -148,6 +189,13 @@ const authController = {
         return res.status(400).json({
           message:
             "firstName, email, password, phoneNumber, and dateOfBirth are required",
+        });
+      }
+
+      const passwordValidation = validatePassword(password.trim());
+      if (!passwordValidation.isValid) {
+        return res.status(400).json({
+          message: passwordValidation.message,
         });
       }
 
@@ -350,6 +398,14 @@ const authController = {
   async resetPassword(req, res) {
     try {
       const { token, newPassword } = req.body;
+
+      const passwordValidation = validatePassword(newPassword.trim());
+      if (!passwordValidation.isValid) {
+        return res.status(400).json({
+          message: passwordValidation.message,
+        });
+      }
+
       const decoded = jwt.verify(token, SECRET_KEY);
 
       const user = await User.findOne({

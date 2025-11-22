@@ -37,7 +37,7 @@ module.exports = {
         allowNull: true,
       },
       avatarUrl: {
-        type: Sequelize.STRING,
+        type: Sequelize.TEXT,
         allowNull: true,
       },
       color: {
@@ -55,11 +55,11 @@ module.exports = {
         allowNull: true,
       },
       aiBackground: {
-        type: Sequelize.STRING,
+        type: Sequelize.TEXT,
         allowNull: true,
       },
       template: {
-        type: Sequelize.ENUM("modern", "gradient", "glass", "dark"),
+        type: Sequelize.STRING,
         allowNull: false,
         defaultValue: "modern",
       },

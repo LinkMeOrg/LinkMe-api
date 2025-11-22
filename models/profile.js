@@ -177,13 +177,8 @@ module.exports = (sequelize, DataTypes) => {
         },
       },
       avatarUrl: {
-        type: DataTypes.STRING,
+        type: DataTypes.TEXT,
         allowNull: true,
-        validate: {
-          isUrl: {
-            msg: "Avatar URL must be a valid URL",
-          },
-        },
       },
       color: {
         type: DataTypes.STRING,
@@ -218,24 +213,13 @@ module.exports = (sequelize, DataTypes) => {
         },
       },
       aiBackground: {
-        type: DataTypes.STRING,
+        type: DataTypes.TEXT,
         allowNull: true,
-        validate: {
-          isUrl: {
-            msg: "AI background must be a valid URL",
-          },
-        },
       },
       template: {
-        type: DataTypes.ENUM("modern", "gradient", "glass", "dark"),
+        type: DataTypes.STRING,
         allowNull: false,
         defaultValue: "modern",
-        validate: {
-          isIn: {
-            args: [["modern", "gradient", "glass", "dark"]],
-            msg: "Template must be one of: modern, gradient, glass, dark",
-          },
-        },
       },
       slug: {
         type: DataTypes.STRING,

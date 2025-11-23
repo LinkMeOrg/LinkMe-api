@@ -1,30 +1,21 @@
 const { User } = require("../models");
 const jwt = require("jsonwebtoken");
 const SECRET_KEY = process.env.JWT_SECRET;
-const nodemailer = require("nodemailer");
 const { Op } = require("sequelize");
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const FacebookStrategy = require("passport-facebook").Strategy;
 const crypto = require("crypto");
+const { sendTemplatedEmail, sendEmail } = require("../utils/email");
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 10,
-});
+// ==================== PASSPORT CONFIGURATION ====================
 
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:4000/auth/google/callback",
+      callbackURL: `${process.env.BACKEND_URL}/auth/google/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -38,7 +29,15 @@ passport.use(
             lastName: null,
             email: profile.emails?.[0]?.value,
             role: "user",
+            isVerified: true, // Auto-verify OAuth users
           });
+
+          // Send welcome email to OAuth user
+          sendTemplatedEmail(user.email, "welcome", user.firstName).catch(
+            (error) => {
+              console.error("Error sending welcome email:", error);
+            }
+          );
         }
 
         done(null, user);
@@ -54,7 +53,7 @@ passport.use(
     {
       clientID: process.env.FACEBOOK_APP_ID,
       clientSecret: process.env.FACEBOOK_APP_SECRET,
-      callbackURL: "http://localhost:4000/auth/facebook/callback",
+      callbackURL: `${process.env.BACKEND_URL}/auth/facebook/callback`,
       profileFields: ["id", "displayName", "email"],
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -64,12 +63,22 @@ passport.use(
         if (!user) {
           user = await User.create({
             facebookId: profile.id,
-            firstName: profile.displayName, // UPDATED
+            firstName: profile.displayName,
             secondName: null,
             lastName: null,
             email: profile.emails?.[0]?.value || `${profile.id}@facebook.com`,
             role: "user",
+            isVerified: true, // Auto-verify OAuth users
           });
+
+          // Send welcome email to OAuth user
+          if (user.email && !user.email.includes("@facebook.com")) {
+            sendTemplatedEmail(user.email, "welcome", user.firstName).catch(
+              (error) => {
+                console.error("Error sending welcome email:", error);
+              }
+            );
+          }
         }
 
         done(null, user);
@@ -90,44 +99,253 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+// ==================== HELPER FUNCTIONS ====================
+
 const generateToken = (user) =>
   jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "1w" });
 
-const sendOtpEmail = async (email, otp) => {
-  await transporter.sendMail({
+const sendOtpEmail = async (email, otp, userName) => {
+  await sendEmail({
     to: email,
-    from: process.env.EMAIL_USER,
-    subject: "Your OTP for email verification",
-    text: `Your OTP code is: ${otp}`,
+    subject: "Your OTP for Email Verification ✉️",
     html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Email Verification</h2>
-        <p>Your OTP code is:</p>
-        <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
-        <p>This code will expire in 10 minutes.</p>
-      </div>
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6; 
+              color: #333; 
+              margin: 0;
+              padding: 0;
+              background-color: #f5f5f5;
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 40px auto; 
+              background-color: white;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header { 
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white; 
+              padding: 40px 20px; 
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+              font-weight: 600;
+            }
+            .content { 
+              padding: 40px 30px;
+              text-align: center;
+            }
+            .content h2 {
+              color: #667eea;
+              margin-top: 0;
+              font-size: 24px;
+            }
+            .content p {
+              color: #555;
+              font-size: 16px;
+              margin: 16px 0;
+            }
+            .otp-box {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              font-size: 48px;
+              font-weight: bold;
+              letter-spacing: 10px;
+              padding: 20px;
+              border-radius: 12px;
+              margin: 30px 0;
+              display: inline-block;
+            }
+            .info-box {
+              background-color: #FEF2F2;
+              border-left: 4px solid #EF4444;
+              padding: 16px;
+              margin: 24px 0;
+              border-radius: 4px;
+              text-align: left;
+            }
+            .footer { 
+              text-align: center; 
+              padding: 30px 20px;
+              background-color: #f9fafb;
+              color: #6b7280; 
+              font-size: 14px;
+              border-top: 1px solid #e5e7eb;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✉️ Email Verification</h1>
+            </div>
+            <div class="content">
+              <h2>Hello ${userName || "there"}!</h2>
+              <p>Thank you for signing up with LinkMe. To complete your registration, please use the following OTP code:</p>
+              
+              <div class="otp-box">${otp}</div>
+
+              <div class="info-box">
+                <p style="margin: 0;"><strong>⚠️ Important:</strong></p>
+                <p style="margin: 8px 0 0 0; font-size: 14px;">
+                  • This code will expire in 10 minutes<br>
+                  • Do not share this code with anyone<br>
+                  • If you didn't request this code, please ignore this email
+                </p>
+              </div>
+
+              <p>Best regards,<br><strong>The LinkMe Team</strong></p>
+            </div>
+            <div class="footer">
+              <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
     `,
+    text: `Email Verification\n\nHello ${
+      userName || "there"
+    }!\n\nYour OTP code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nBest regards,\nThe LinkMe Team`,
   });
 };
 
-const sendPasswordResetEmail = async (email, resetToken) => {
-  await transporter.sendMail({
+const sendPasswordResetEmail = async (email, resetToken, userName) => {
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+  await sendEmail({
     to: email,
-    from: process.env.EMAIL_USER,
-    subject: "Password Reset",
-    text: `Reset your password here: http://localhost:5173/reset-password/${resetToken}`,
+    subject: "Reset Your LinkMe Password 🔒",
     html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Password Reset Request</h2>
-        <p>Click the button below to reset your password:</p>
-        <a href="http://localhost:5173/reset-password/${resetToken}" 
-           style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">
-          Reset Password
-        </a>
-        <p>Or copy this link: http://localhost:5173/reset-password/${resetToken}</p>
-        <p>This link will expire in 1 hour.</p>
-      </div>
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6; 
+              color: #333; 
+              margin: 0;
+              padding: 0;
+              background-color: #f5f5f5;
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 40px auto; 
+              background-color: white;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header { 
+              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+              color: white; 
+              padding: 40px 20px; 
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+              font-weight: 600;
+            }
+            .content { 
+              padding: 40px 30px;
+            }
+            .content h2 {
+              color: #EF4444;
+              margin-top: 0;
+              font-size: 24px;
+            }
+            .content p {
+              color: #555;
+              font-size: 16px;
+              margin: 16px 0;
+            }
+            .button { 
+              display: inline-block; 
+              padding: 14px 32px; 
+              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+              color: white !important; 
+              text-decoration: none; 
+              border-radius: 8px; 
+              margin: 24px 0;
+              font-weight: 600;
+            }
+            .warning { 
+              background-color: #FEF2F2; 
+              border-left: 4px solid #EF4444; 
+              padding: 16px; 
+              margin: 24px 0;
+              border-radius: 4px;
+            }
+            .warning strong {
+              color: #DC2626;
+              display: block;
+              margin-bottom: 8px;
+            }
+            .warning p {
+              margin: 4px 0;
+              font-size: 14px;
+            }
+            .footer { 
+              text-align: center; 
+              padding: 30px 20px;
+              background-color: #f9fafb;
+              color: #6b7280; 
+              font-size: 14px;
+              border-top: 1px solid #e5e7eb;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔒 Password Reset Request</h1>
+            </div>
+            <div class="content">
+              <h2>Hello ${userName || "there"},</h2>
+              <p>We received a request to reset your password for your LinkMe account. Click the button below to create a new password:</p>
+              
+              <center>
+                <a href="${resetLink}" class="button">Reset Password</a>
+              </center>
+
+              <div class="warning">
+                <strong>⚠️ Important Security Information</strong>
+                <p>• This link will expire in 1 hour</p>
+                <p>• If you didn't request this password reset, please ignore this email</p>
+                <p>• This link can only be used once</p>
+                <p>• Never share this link with anyone</p>
+              </div>
+
+              <p>If you're having trouble with the button above, copy and paste this link into your browser:</p>
+              <p style="font-size: 12px; color: #6b7280; word-break: break-all;">${resetLink}</p>
+
+              <p>Best regards,<br><strong>The LinkMe Security Team</strong></p>
+            </div>
+            <div class="footer">
+              <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
+              <p>This is an automated security email. Please do not reply.</p>
+            </div>
+          </div>
+        </body>
+      </html>
     `,
+    text: `Password Reset Request\n\nHello ${
+      userName || "there"
+    },\n\nWe received a request to reset your password. Click the link below to create a new password:\n\n${resetLink}\n\nThis link expires in 1 hour and can only be used once.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nThe LinkMe Security Team`,
   });
 };
 
@@ -171,6 +389,8 @@ const validatePassword = (password) => {
 
   return { isValid: true };
 };
+
+// ==================== AUTH CONTROLLER ====================
 
 const authController = {
   async signUp(req, res) {
@@ -231,12 +451,14 @@ const authController = {
         otp,
       });
 
-      sendOtpEmail(email, otp).catch((error) => {
+      // Send OTP email
+      sendOtpEmail(email, otp, firstName).catch((error) => {
         console.error("Error sending OTP email:", error);
       });
 
       return res.status(201).json({
-        message: "Signup successful. Please verify your OTP.",
+        message:
+          "Signup successful. Please verify your OTP sent to your email.",
       });
     } catch (error) {
       console.error("Signup error:", error);
@@ -262,10 +484,18 @@ const authController = {
       user.otp = null;
       await user.save();
 
+      // Send welcome email after successful verification
+      sendTemplatedEmail(user.email, "welcome", user.firstName).catch(
+        (error) => {
+          console.error("Error sending welcome email:", error);
+        }
+      );
+
       const token = generateToken(user);
       res.status(200).json({
         token,
         user: { id: user.id, email: user.email },
+        message: "Email verified successfully! Welcome to LinkMe.",
       });
     } catch (error) {
       res
@@ -293,7 +523,7 @@ const authController = {
       user.otp = otp;
       await user.save();
 
-      sendOtpEmail(email, otp).catch((error) => {
+      sendOtpEmail(email, otp, user.firstName).catch((error) => {
         console.error("Error sending OTP email:", error);
       });
 
@@ -319,7 +549,6 @@ const authController = {
 
       // Check if the user is verified
       if (!user.isVerified) {
-        // or user.verified depending on your model
         return res
           .status(400)
           .json({ message: "Please verify your email first" });
@@ -336,6 +565,7 @@ const authController = {
         .json({ message: "Error logging in", error: error.message });
     }
   },
+
   async adminLogin(req, res) {
     try {
       const { email, password } = req.body;
@@ -369,6 +599,7 @@ const authController = {
       });
     }
   },
+
   async forgotPassword(req, res) {
     try {
       const { email } = req.body;
@@ -379,14 +610,19 @@ const authController = {
         expiresIn: "1h",
       });
       user.resetPasswordToken = resetToken;
-      user.resetPasswordExpires = Date.now() + 3600000;
+      user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
       await user.save();
 
-      sendPasswordResetEmail(user.email, resetToken).catch((error) => {
-        console.error("Error sending password reset email:", error);
-      });
+      sendPasswordResetEmail(user.email, resetToken, user.firstName).catch(
+        (error) => {
+          console.error("Error sending password reset email:", error);
+        }
+      );
 
-      res.status(200).json({ message: "Password reset email sent" });
+      res.status(200).json({
+        message:
+          "Password reset email sent successfully. Please check your email.",
+      });
     } catch (error) {
       res.status(500).json({
         message: "Error sending password reset email",
@@ -424,6 +660,42 @@ const authController = {
       user.resetPasswordExpires = null;
       await user.save();
 
+      // Send confirmation email
+      sendEmail({
+        to: user.email,
+        subject: "Password Changed Successfully ✅",
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>✅ Password Changed Successfully</h1>
+                </div>
+                <div class="content">
+                  <h2>Hello ${user.firstName},</h2>
+                  <p>Your password has been successfully changed.</p>
+                  <p>If you didn't make this change, please contact our support team immediately.</p>
+                  <p>Best regards,<br><strong>The LinkMe Security Team</strong></p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `,
+        text: `Password Changed Successfully\n\nHello ${user.firstName},\n\nYour password has been successfully changed.\n\nIf you didn't make this change, please contact our support team immediately.\n\nBest regards,\nThe LinkMe Security Team`,
+      }).catch((error) => {
+        console.error("Error sending password confirmation email:", error);
+      });
+
       res.status(200).json({ message: "Password reset successfully" });
     } catch (error) {
       res
@@ -442,14 +714,14 @@ const authController = {
 
       const user = {
         id: req.user.id,
-        firstName: req.user.firstName, // UPDATED
+        firstName: req.user.firstName,
         email: req.user.email,
         role: req.user.role,
       };
 
       const userEncoded = encodeURIComponent(JSON.stringify(user));
       res.redirect(
-        `http://localhost:5173/oauth-success?token=${token}&user=${userEncoded}`
+        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&user=${userEncoded}`
       );
     },
   ],
@@ -464,14 +736,14 @@ const authController = {
 
       const user = {
         id: req.user.id,
-        firstName: req.user.firstName, // UPDATED
+        firstName: req.user.firstName,
         email: req.user.email,
         role: req.user.role,
       };
 
       const userEncoded = encodeURIComponent(JSON.stringify(user));
       res.redirect(
-        `http://localhost:5173/oauth-success?token=${token}&user=${userEncoded}`
+        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&user=${userEncoded}`
       );
     },
   ],

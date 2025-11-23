@@ -9,8 +9,12 @@ module.exports = {
     dialect: process.env.DB_DIALECT || "postgres",
     port: process.env.DB_PORT || 5432,
     logging: false,
-    // SSL disabled for local PostgreSQL
-    dialectOptions: {},
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
   },
 
   test: {
@@ -21,14 +25,18 @@ module.exports = {
     dialect: process.env.DB_DIALECT || "postgres",
     port: process.env.DB_PORT || 5432,
     logging: false,
-    dialectOptions: {},
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
   },
 
   production: {
     use_env_variable: "DATABASE_URL",
     dialect: "postgres",
     logging: false,
-    // SSL enabled for production (Render/Vercel)
     dialectOptions: {
       ssl: {
         require: true,

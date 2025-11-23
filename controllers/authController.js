@@ -452,9 +452,25 @@ const authController = {
       });
 
       // Send OTP email
-      sendOtpEmail(email, otp, firstName).catch((error) => {
-        console.error("Error sending OTP email:", error);
-      });
+      console.log("📧 Starting email send process...");
+      console.log("📧 Email:", email);
+      console.log("📧 OTP:", otp);
+      console.log(
+        "📧 RESEND_API_KEY:",
+        process.env.RESEND_API_KEY ? "EXISTS" : "MISSING"
+      );
+      console.log("📧 EMAIL_FROM:", process.env.EMAIL_FROM);
+
+      try {
+        await sendOtpEmail(email, otp, firstName);
+        console.log("✅ OTP email sent successfully to:", email);
+      } catch (error) {
+        console.error("❌ CRITICAL: Email sending failed!");
+        console.error("Error name:", error.name);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        console.error("Full error:", JSON.stringify(error, null, 2));
+      }
 
       return res.status(201).json({
         message:

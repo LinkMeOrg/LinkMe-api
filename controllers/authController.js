@@ -332,6 +332,7 @@ const authController = {
         return res.status(400).json({ message: "User already exists" });
 
       const otp = crypto.randomInt(100000, 999999).toString();
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
       const user = await User.create({
         firstName: firstName.trim(),
@@ -343,6 +344,7 @@ const authController = {
         dateOfBirth: dob,
         isVerified: false,
         otp,
+        otpExpires,
       });
 
       // Send OTP email
@@ -386,12 +388,20 @@ const authController = {
 
       if (!user) return res.status(404).json({ message: "User not found" });
 
+      // Check if OTP has expired
+      if (user.otpExpires && new Date() > new Date(user.otpExpires)) {
+        return res.status(400).json({
+          message: "OTP has expired. Please request a new one.",
+        });
+      }
+
       if (user.otp.trim() !== otp.trim()) {
         return res.status(400).json({ message: "Invalid OTP" });
       }
 
       user.isVerified = true;
       user.otp = null;
+      user.otpExpires = null;
 
       const token = generateToken(user);
       const refreshToken = generateRefreshToken(user);
@@ -435,7 +445,10 @@ const authController = {
       }
 
       const otp = crypto.randomInt(100000, 999999).toString();
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+
       user.otp = otp;
+      user.otpExpires = otpExpires;
       await user.save();
 
       sendOtpEmail(email, otp, user.firstName).catch((error) => {
@@ -513,7 +526,7 @@ const authController = {
         token,
         refreshToken,
         user: {
-          id: user.id,
+          id: req.user.id,
           email: user.email,
           role: user.role,
         },
@@ -711,6 +724,189 @@ const authController = {
       res
         .status(500)
         .json({ message: "Error resetting password", error: error.message });
+    }
+  },
+
+  // ==================== EMAIL CHANGE FUNCTIONALITY ====================
+
+  async requestEmailChange(req, res) {
+    try {
+      const { newEmail } = req.body;
+      const userId = req.user.id; // Assuming you have auth middleware that sets req.user
+
+      if (!newEmail) {
+        return res.status(400).json({
+          message: "New email is required",
+        });
+      }
+
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if new email is same as current email
+      if (user.email === newEmail.trim()) {
+        return res.status(400).json({
+          message: "New email cannot be the same as current email",
+        });
+      }
+
+      // Check if new email is already taken by another user
+      const emailExists = await User.findOne({
+        where: {
+          email: newEmail.trim(),
+          id: { [Op.ne]: userId },
+        },
+      });
+
+      if (emailExists) {
+        return res.status(400).json({
+          message: "This email is already registered to another account",
+        });
+      }
+
+      // Generate OTP for new email verification
+      const otp = crypto.randomInt(100000, 999999).toString();
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Store pending email and OTP
+      user.pendingEmail = newEmail.trim();
+      user.otp = otp;
+      user.otpExpires = otpExpires;
+      await user.save();
+
+      // Send OTP to new email
+      await sendOtpEmail(newEmail, otp, user.firstName);
+
+      res.status(200).json({
+        message: "Verification code sent to your new email address",
+      });
+    } catch (error) {
+      console.error("Request email change error:", error);
+      res.status(500).json({
+        message: "Error requesting email change",
+        error: error.message,
+      });
+    }
+  },
+
+  async verifyEmailChange(req, res) {
+    try {
+      const { otp } = req.body;
+      const userId = req.user.id; // Assuming you have auth middleware
+
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!user.pendingEmail) {
+        return res.status(400).json({
+          message: "No pending email change request found",
+        });
+      }
+
+      // Check if OTP has expired
+      if (user.otpExpires && new Date() > new Date(user.otpExpires)) {
+        return res.status(400).json({
+          message: "OTP has expired. Please request a new one.",
+        });
+      }
+
+      if (user.otp.trim() !== otp.trim()) {
+        return res.status(400).json({ message: "Invalid OTP" });
+      }
+
+      // Update email and clear pending email
+      const oldEmail = user.email;
+      user.email = user.pendingEmail;
+      user.pendingEmail = null;
+      user.otp = null;
+      user.otpExpires = null;
+      await user.save();
+
+      // Send confirmation to old email
+      const oldEmailMessage = `Your email address has been changed from ${oldEmail} to ${user.email}. If you didn't make this change, please contact our support team immediately.`;
+      const oldEmailTemplate = emailTemplates.notification(
+        user.firstName,
+        "Email Address Changed ✅",
+        oldEmailMessage,
+        `${process.env.DASHBOARD_URL || process.env.FRONTEND_URL}/support`,
+        "Contact Support"
+      );
+
+      sendEmail({
+        to: oldEmail,
+        subject: oldEmailTemplate.subject,
+        html: oldEmailTemplate.html,
+        text: oldEmailTemplate.text,
+      }).catch((error) => {
+        console.error("Error sending email change notification:", error);
+      });
+
+      // Send welcome message to new email
+      const newEmailMessage = `Your email address has been successfully updated. You can now use ${user.email} to log in to your account.`;
+      const newEmailTemplate = emailTemplates.notification(
+        user.firstName,
+        "Welcome to Your New Email ✅",
+        newEmailMessage,
+        `${process.env.DASHBOARD_URL || process.env.FRONTEND_URL}/dashboard`,
+        "Go to Dashboard"
+      );
+
+      sendEmail({
+        to: user.email,
+        subject: newEmailTemplate.subject,
+        html: newEmailTemplate.html,
+        text: newEmailTemplate.text,
+      }).catch((error) => {
+        console.error("Error sending welcome email:", error);
+      });
+
+      res.status(200).json({
+        message: "Email changed successfully",
+        newEmail: user.email,
+      });
+    } catch (error) {
+      console.error("Verify email change error:", error);
+      res.status(500).json({
+        message: "Error verifying email change",
+        error: error.message,
+      });
+    }
+  },
+
+  async cancelEmailChange(req, res) {
+    try {
+      const userId = req.user.id; // Assuming you have auth middleware
+
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!user.pendingEmail) {
+        return res.status(400).json({
+          message: "No pending email change request found",
+        });
+      }
+
+      // Clear pending email and OTP
+      user.pendingEmail = null;
+      user.otp = null;
+      user.otpExpires = null;
+      await user.save();
+
+      res.status(200).json({
+        message: "Email change request cancelled successfully",
+      });
+    } catch (error) {
+      console.error("Cancel email change error:", error);
+      res.status(500).json({
+        message: "Error cancelling email change",
+        error: error.message,
+      });
     }
   },
 

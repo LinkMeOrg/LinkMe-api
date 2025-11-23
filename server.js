@@ -15,17 +15,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// CORS configuration for multiple frontends (client + dashboard)
 const allowedOrigins = [
-  "http://localhost:5173", // Local client
-  "http://localhost:5174", // Local dashboard (if different port)
-  process.env.CLIENT_URL, // Production client
-  process.env.DASHBOARD_URL, // Production dashboard
-].filter(Boolean); // Remove undefined values
+  "http://localhost:5173",
+  "http://localhost:5174",
+  process.env.CLIENT_URL,
+  process.env.DASHBOARD_URL,
+].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or Postman)
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.indexOf(origin) !== -1) {

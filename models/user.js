@@ -164,6 +164,10 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: false,
       },
       email: DataTypes.STRING,
+      pendingEmail: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       password: DataTypes.STRING,
       role: {
         type: DataTypes.ENUM("user", "business", "admin"),
@@ -172,6 +176,10 @@ module.exports = (sequelize, DataTypes) => {
       },
       otp: {
         type: DataTypes.STRING,
+        allowNull: true,
+      },
+      otpExpires: {
+        type: DataTypes.DATE,
         allowNull: true,
       },
       googleId: {

@@ -13,6 +13,9 @@ const {
   toggleUserStatus,
   resetUserPassword,
   getUserStats,
+  requestEmailChange,
+  verifyEmailChange,
+  cancelEmailChange,
 } = require("../controllers/userController");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
@@ -42,6 +45,22 @@ router.post(
   authMiddleware,
   adminMiddleware,
   resetUserPassword
+);
+
+router.post(
+  "/me/request-email-change",
+  authMiddleware,
+  requestEmailChange
+);
+router.post(
+  "/me/verify-email-change",
+  authMiddleware,
+  verifyEmailChange
+);
+router.post(
+  "/me/cancel-email-change",
+  authMiddleware,
+  cancelEmailChange
 );
 
 module.exports = router;

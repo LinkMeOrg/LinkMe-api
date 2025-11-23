@@ -1,6 +1,40 @@
 const { User, Profile } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+
+const nodemailer = require("nodemailer");
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 10,
+});
+
+const sendEmailChangeOTP = async (email, otp, firstName) => {
+  await transporter.sendMail({
+    to: email,
+    from: process.env.EMAIL_USER,
+    subject: "Verify Your New Email - LinkMe",
+    text: `Your OTP code is: ${otp}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Email Change Verification</h2>
+        <p>Hello ${firstName},</p>
+        <p>You requested to change your email address to this email.</p>
+        <p>Your OTP code is:</p>
+        <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
+        <p>This code will expire in 10 minutes.</p>
+        <p>If you didn't request this change, please ignore this email and secure your account.</p>
+      </div>
+    `,
+  });
+};
 
 // ============= EXISTING FUNCTIONS (UNCHANGED) =============
 
@@ -29,15 +63,28 @@ const getUserData = async (req, res) => {
 const updateUserData = async (req, res) => {
   try {
     const token = req.headers.authorization.split(" ")[1];
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.id;
 
     const { firstName, secondName, lastName, phoneNumber, dateOfBirth, email } =
       req.body;
 
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ Prevent email changes through this endpoint
+    if (email && email !== user.email) {
+      return res.status(400).json({
+        message:
+          "Email cannot be changed directly. Please use the 'Change Email' feature.",
+      });
+    }
+
     const [updated] = await User.update(
-      { firstName, secondName, lastName, phoneNumber, dateOfBirth, email },
+      { firstName, secondName, lastName, phoneNumber, dateOfBirth },
       {
         where: { id: userId },
       }
@@ -54,6 +101,185 @@ const updateUserData = async (req, res) => {
     res.status(200).json(updatedUser);
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ✅ NEW: Request email change with OTP
+const requestEmailChange = async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const { newEmail, password } = req.body;
+
+    if (!newEmail || !password) {
+      return res.status(400).json({
+        message: "New email and current password are required",
+      });
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify current password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Check if new email is same as current
+    if (newEmail.toLowerCase().trim() === user.email.toLowerCase()) {
+      return res.status(400).json({
+        message: "New email is same as current email",
+      });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({
+      where: { email: newEmail.toLowerCase().trim() },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "This email is already registered to another account",
+      });
+    }
+
+    // Generate OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store OTP and pending email
+    await user.update({
+      otp,
+      otpExpires,
+      pendingEmail: newEmail.toLowerCase().trim(),
+    });
+
+    // Send OTP to NEW email
+    await sendEmailChangeOTP(newEmail, otp, user.firstName);
+
+    res.status(200).json({
+      message: `OTP sent to ${newEmail}. Please check your email.`,
+      expiresIn: "10 minutes",
+    });
+  } catch (error) {
+    console.error("Error requesting email change:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ NEW: Verify OTP and update email
+const verifyEmailChange = async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if OTP exists and hasn't expired
+    if (!user.otp || !user.otpExpires) {
+      return res.status(400).json({
+        message: "No pending email change request. Please request again.",
+      });
+    }
+
+    if (new Date() > user.otpExpires) {
+      return res.status(400).json({
+        message: "OTP has expired. Please request a new one.",
+      });
+    }
+
+    if (user.otp.trim() !== otp.trim()) {
+      return res.status(400).json({
+        message: "Invalid OTP. Please try again.",
+      });
+    }
+
+    if (!user.pendingEmail) {
+      return res.status(400).json({
+        message: "No pending email found.",
+      });
+    }
+
+    // Update email
+    await user.update({
+      email: user.pendingEmail,
+      otp: null,
+      otpExpires: null,
+      pendingEmail: null,
+    });
+
+    const updatedUser = await User.findByPk(userId, {
+      attributes: { exclude: ["password"] },
+    });
+
+    res.status(200).json({
+      message: "Email updated successfully!",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Error verifying email change:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ NEW: Cancel email change request
+const cancelEmailChange = async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await user.update({
+      otp: null,
+      otpExpires: null,
+      pendingEmail: null,
+    });
+
+    res.status(200).json({
+      message: "Email change request cancelled",
+    });
+  } catch (error) {
+    console.error("Error cancelling email change:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -520,8 +746,9 @@ module.exports = {
   updateUserData,
   getAllUsersData,
   changeUserPassword,
-
-  // New admin exports
+  requestEmailChange,
+  verifyEmailChange,
+  cancelEmailChange,
   getAllUsersDataAdmin,
   getUserById,
   createUser,

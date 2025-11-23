@@ -1,4 +1,4 @@
-const { Profile, SocialLink, User, sequelize } = require("../models");
+const { Profile, SocialLink, sequelize } = require("../models");
 const { Op } = require("sequelize");
 
 exports.getDashboardSummary = async (req, res) => {

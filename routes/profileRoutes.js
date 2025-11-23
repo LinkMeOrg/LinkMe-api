@@ -8,6 +8,7 @@ const {
 } = require("../middleware/uploadMiddleware");
 
 const profileController = require("../controllers/profileController");
+const profileViewController = require("../controllers/profileViewController");
 
 router.post(
   "/",
@@ -57,6 +58,21 @@ router.get(
 
 router.get("/public/:slug", profileController.getProfileBySlug);
 
+router.post(
+  "/public/:slug/visitor-contact",
+  profileViewController.saveVisitorContact
+);
 
+router.get(
+  "/:id/visitors",
+  authMiddleware,
+  profileViewController.getProfileVisitors
+);
+
+router.get(
+  "/:id/visitors/stats",
+  authMiddleware,
+  profileViewController.getVisitorStats
+);
 
 module.exports = router;

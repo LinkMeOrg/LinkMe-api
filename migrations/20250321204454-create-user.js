@@ -36,6 +36,10 @@ module.exports = {
       email: {
         type: Sequelize.STRING,
       },
+      pendingEmail: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
       password: {
         type: Sequelize.STRING,
       },
@@ -46,6 +50,10 @@ module.exports = {
       },
       otp: {
         type: Sequelize.STRING,
+        allowNull: true,
+      },
+      otpExpires: {
+        type: Sequelize.DATE,
         allowNull: true,
       },
       resetPasswordToken: {

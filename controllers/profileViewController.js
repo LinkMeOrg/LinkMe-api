@@ -1,4 +1,9 @@
-const { ProfileView, Profile, SocialLink } = require("../models");
+const {
+  ProfileView,
+  Profile,
+  SocialLink,
+  ProfileVisitor,
+} = require("../models");
 const { Op } = require("sequelize");
 const geoip = require("geoip-lite");
 const useragent = require("useragent");
@@ -778,6 +783,223 @@ exports.deleteOldViews = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error deleting old views",
+      error: error.message,
+    });
+  }
+};
+
+exports.saveVisitorContact = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { email, phone, source = "direct" } = req.body;
+
+    if (!email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and phone number are required",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
+
+    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number format",
+      });
+    }
+
+    const profile = await Profile.findOne({
+      where: { slug, isActive: true },
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found",
+      });
+    }
+
+    const ip = getClientIP(req);
+    const userAgent = req.headers["user-agent"] || "";
+    const { device, browser } = parseUserAgent(userAgent);
+    const { country, city } = getGeoInfo(ip);
+
+    const visitor = await ProfileVisitor.create({
+      profileId: profile.id,
+      visitorEmail: email,
+      visitorPhone: phone,
+      visitorIp: ip,
+      visitorCountry: country,
+      visitorCity: city,
+      userAgent,
+      device,
+      browser,
+      viewSource: source,
+      submittedAt: new Date(),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Contact information saved successfully",
+      data: {
+        visitorId: visitor.id,
+        profileId: profile.id,
+      },
+    });
+  } catch (error) {
+    console.error("Error saving visitor contact:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error saving contact information",
+      error: error.message,
+    });
+  }
+};
+
+exports.getProfileVisitors = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { limit = 20, offset = 0 } = req.query;
+
+    const profile = await Profile.findOne({
+      where: { id, userId },
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found or you don't have permission",
+      });
+    }
+
+    const { count, rows: visitors } = await ProfileVisitor.findAndCountAll({
+      where: { profileId: id },
+      order: [["submittedAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      attributes: [
+        "id",
+        "visitorEmail",
+        "visitorPhone",
+        "visitorCountry",
+        "visitorCity",
+        "device",
+        "browser",
+        "viewSource",
+        "submittedAt",
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total: count,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        visitors,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching visitors:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching visitors",
+      error: error.message,
+    });
+  }
+};
+
+exports.getVisitorStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const profile = await Profile.findOne({
+      where: { id, userId },
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found or you don't have permission",
+      });
+    }
+
+    const totalVisitors = await ProfileVisitor.count({
+      where: { profileId: id },
+    });
+
+    const visitorsBySource = await ProfileVisitor.findAll({
+      where: { profileId: id },
+      attributes: [
+        "viewSource",
+        [
+          ProfileVisitor.sequelize.fn(
+            "COUNT",
+            ProfileVisitor.sequelize.col("id")
+          ),
+          "count",
+        ],
+      ],
+      group: ["viewSource"],
+      raw: true,
+    });
+
+    const visitorsByDevice = await ProfileVisitor.findAll({
+      where: { profileId: id },
+      attributes: [
+        "device",
+        [
+          ProfileVisitor.sequelize.fn(
+            "COUNT",
+            ProfileVisitor.sequelize.col("id")
+          ),
+          "count",
+        ],
+      ],
+      group: ["device"],
+      raw: true,
+    });
+
+    const visitorsByCountry = await ProfileVisitor.findAll({
+      where: { profileId: id },
+      attributes: [
+        "visitorCountry",
+        [
+          ProfileVisitor.sequelize.fn(
+            "COUNT",
+            ProfileVisitor.sequelize.col("id")
+          ),
+          "count",
+        ],
+      ],
+      group: ["visitorCountry"],
+      raw: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalVisitors,
+        bySource: visitorsBySource,
+        byDevice: visitorsByDevice,
+        byCountry: visitorsByCountry,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching visitor stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching visitor statistics",
       error: error.message,
     });
   }

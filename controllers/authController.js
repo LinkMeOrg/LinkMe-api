@@ -6,7 +6,11 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const FacebookStrategy = require("passport-facebook").Strategy;
 const crypto = require("crypto");
-const { sendTemplatedEmail, sendEmail } = require("../utils/email");
+const {
+  sendTemplatedEmail,
+  sendEmail,
+  emailTemplates,
+} = require("../utils/email");
 
 // ==================== PASSPORT CONFIGURATION ====================
 
@@ -104,251 +108,138 @@ passport.deserializeUser(async (id, done) => {
 const generateToken = (user) =>
   jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "1w" });
 
+/**
+ * OTP Email template
+ */
+const otpEmailTemplate = (userName, otp) => ({
+  subject: "Your OTP for Email Verification ✉️",
+  html: `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 40px auto; 
+            background-color: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            padding: 40px 20px; 
+            text-align: center;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+          }
+          .content { 
+            padding: 40px 30px;
+            text-align: center;
+          }
+          .content h2 {
+            color: #667eea;
+            margin-top: 0;
+            font-size: 24px;
+          }
+          .content p {
+            color: #555;
+            font-size: 16px;
+            margin: 16px 0;
+          }
+          .otp-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 10px;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 30px 0;
+            display: inline-block;
+          }
+          .info-box {
+            background-color: #FEF2F2;
+            border-left: 4px solid #EF4444;
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 4px;
+            text-align: left;
+          }
+          .footer { 
+            text-align: center; 
+            padding: 30px 20px;
+            background-color: #f9fafb;
+            color: #6b7280; 
+            font-size: 14px;
+            border-top: 1px solid #e5e7eb;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✉️ Email Verification</h1>
+          </div>
+          <div class="content">
+            <h2>Hello ${userName || "there"}!</h2>
+            <p>Thank you for signing up with LinkMe. To complete your registration, please use the following OTP code:</p>
+            
+            <div class="otp-box">${otp}</div>
+
+            <div class="info-box">
+              <p style="margin: 0;"><strong>⚠️ Important:</strong></p>
+              <p style="margin: 8px 0 0 0; font-size: 14px;">
+                • This code will expire in 10 minutes<br>
+                • Do not share this code with anyone<br>
+                • If you didn't request this code, please ignore this email
+              </p>
+            </div>
+
+            <p>Best regards,<br><strong>The LinkMe Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `,
+  text: `Email Verification\n\nHello ${
+    userName || "there"
+  }!\n\nYour OTP code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nBest regards,\nThe LinkMe Team`,
+});
+
+/**
+ * Send OTP email using template
+ */
 const sendOtpEmail = async (email, otp, userName) => {
+  const template = otpEmailTemplate(userName, otp);
   await sendEmail({
     to: email,
-    subject: "Your OTP for Email Verification ✉️",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6; 
-              color: #333; 
-              margin: 0;
-              padding: 0;
-              background-color: #f5f5f5;
-            }
-            .container { 
-              max-width: 600px; 
-              margin: 40px auto; 
-              background-color: white;
-              border-radius: 12px;
-              overflow: hidden;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            }
-            .header { 
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white; 
-              padding: 40px 20px; 
-              text-align: center;
-            }
-            .header h1 {
-              margin: 0;
-              font-size: 28px;
-              font-weight: 600;
-            }
-            .content { 
-              padding: 40px 30px;
-              text-align: center;
-            }
-            .content h2 {
-              color: #667eea;
-              margin-top: 0;
-              font-size: 24px;
-            }
-            .content p {
-              color: #555;
-              font-size: 16px;
-              margin: 16px 0;
-            }
-            .otp-box {
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              font-size: 48px;
-              font-weight: bold;
-              letter-spacing: 10px;
-              padding: 20px;
-              border-radius: 12px;
-              margin: 30px 0;
-              display: inline-block;
-            }
-            .info-box {
-              background-color: #FEF2F2;
-              border-left: 4px solid #EF4444;
-              padding: 16px;
-              margin: 24px 0;
-              border-radius: 4px;
-              text-align: left;
-            }
-            .footer { 
-              text-align: center; 
-              padding: 30px 20px;
-              background-color: #f9fafb;
-              color: #6b7280; 
-              font-size: 14px;
-              border-top: 1px solid #e5e7eb;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>✉️ Email Verification</h1>
-            </div>
-            <div class="content">
-              <h2>Hello ${userName || "there"}!</h2>
-              <p>Thank you for signing up with LinkMe. To complete your registration, please use the following OTP code:</p>
-              
-              <div class="otp-box">${otp}</div>
-
-              <div class="info-box">
-                <p style="margin: 0;"><strong>⚠️ Important:</strong></p>
-                <p style="margin: 8px 0 0 0; font-size: 14px;">
-                  • This code will expire in 10 minutes<br>
-                  • Do not share this code with anyone<br>
-                  • If you didn't request this code, please ignore this email
-                </p>
-              </div>
-
-              <p>Best regards,<br><strong>The LinkMe Team</strong></p>
-            </div>
-            <div class="footer">
-              <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `,
-    text: `Email Verification\n\nHello ${
-      userName || "there"
-    }!\n\nYour OTP code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nBest regards,\nThe LinkMe Team`,
+    subject: template.subject,
+    html: template.html,
+    text: template.text,
   });
 };
 
-const sendPasswordResetEmail = async (email, resetToken, userName) => {
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-
-  await sendEmail({
-    to: email,
-    subject: "Reset Your LinkMe Password 🔒",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6; 
-              color: #333; 
-              margin: 0;
-              padding: 0;
-              background-color: #f5f5f5;
-            }
-            .container { 
-              max-width: 600px; 
-              margin: 40px auto; 
-              background-color: white;
-              border-radius: 12px;
-              overflow: hidden;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            }
-            .header { 
-              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-              color: white; 
-              padding: 40px 20px; 
-              text-align: center;
-            }
-            .header h1 {
-              margin: 0;
-              font-size: 28px;
-              font-weight: 600;
-            }
-            .content { 
-              padding: 40px 30px;
-            }
-            .content h2 {
-              color: #EF4444;
-              margin-top: 0;
-              font-size: 24px;
-            }
-            .content p {
-              color: #555;
-              font-size: 16px;
-              margin: 16px 0;
-            }
-            .button { 
-              display: inline-block; 
-              padding: 14px 32px; 
-              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-              color: white !important; 
-              text-decoration: none; 
-              border-radius: 8px; 
-              margin: 24px 0;
-              font-weight: 600;
-            }
-            .warning { 
-              background-color: #FEF2F2; 
-              border-left: 4px solid #EF4444; 
-              padding: 16px; 
-              margin: 24px 0;
-              border-radius: 4px;
-            }
-            .warning strong {
-              color: #DC2626;
-              display: block;
-              margin-bottom: 8px;
-            }
-            .warning p {
-              margin: 4px 0;
-              font-size: 14px;
-            }
-            .footer { 
-              text-align: center; 
-              padding: 30px 20px;
-              background-color: #f9fafb;
-              color: #6b7280; 
-              font-size: 14px;
-              border-top: 1px solid #e5e7eb;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🔒 Password Reset Request</h1>
-            </div>
-            <div class="content">
-              <h2>Hello ${userName || "there"},</h2>
-              <p>We received a request to reset your password for your LinkMe account. Click the button below to create a new password:</p>
-              
-              <center>
-                <a href="${resetLink}" class="button">Reset Password</a>
-              </center>
-
-              <div class="warning">
-                <strong>⚠️ Important Security Information</strong>
-                <p>• This link will expire in 1 hour</p>
-                <p>• If you didn't request this password reset, please ignore this email</p>
-                <p>• This link can only be used once</p>
-                <p>• Never share this link with anyone</p>
-              </div>
-
-              <p>If you're having trouble with the button above, copy and paste this link into your browser:</p>
-              <p style="font-size: 12px; color: #6b7280; word-break: break-all;">${resetLink}</p>
-
-              <p>Best regards,<br><strong>The LinkMe Security Team</strong></p>
-            </div>
-            <div class="footer">
-              <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
-              <p>This is an automated security email. Please do not reply.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `,
-    text: `Password Reset Request\n\nHello ${
-      userName || "there"
-    },\n\nWe received a request to reset your password. Click the link below to create a new password:\n\n${resetLink}\n\nThis link expires in 1 hour and can only be used once.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nThe LinkMe Security Team`,
-  });
-};
-
+/**
+ * Password validation
+ */
 const validatePassword = (password) => {
   const minLength = 8;
   const hasUpperCase = /[A-Z]/.test(password);
@@ -500,7 +391,7 @@ const authController = {
       user.otp = null;
       await user.save();
 
-      // Send welcome email after successful verification
+      // Send welcome email after successful verification using template
       sendTemplatedEmail(user.email, "welcome", user.firstName).catch(
         (error) => {
           console.error("Error sending welcome email:", error);
@@ -629,11 +520,22 @@ const authController = {
       user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
       await user.save();
 
-      sendPasswordResetEmail(user.email, resetToken, user.firstName).catch(
-        (error) => {
-          console.error("Error sending password reset email:", error);
-        }
+      // Use the resetPassword template from emailTemplates
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      const template = emailTemplates.resetPassword(
+        user.firstName,
+        resetLink,
+        60
       );
+
+      await sendEmail({
+        to: user.email,
+        subject: template.subject,
+        html: template.html,
+        text: template.text,
+      }).catch((error) => {
+        console.error("Error sending password reset email:", error);
+      });
 
       res.status(200).json({
         message:
@@ -676,38 +578,22 @@ const authController = {
       user.resetPasswordExpires = null;
       await user.save();
 
-      // Send confirmation email
+      // Send password change confirmation using notification template
+      const message =
+        "Your password has been successfully changed. If you didn't make this change, please contact our support team immediately.";
+      const template = emailTemplates.notification(
+        user.firstName,
+        "Password Changed Successfully ✅",
+        message,
+        `${process.env.DASHBOARD_URL || process.env.FRONTEND_URL}/support`,
+        "Contact Support"
+      );
+
       sendEmail({
         to: user.email,
-        subject: "Password Changed Successfully ✅",
-        html: `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-                .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>✅ Password Changed Successfully</h1>
-                </div>
-                <div class="content">
-                  <h2>Hello ${user.firstName},</h2>
-                  <p>Your password has been successfully changed.</p>
-                  <p>If you didn't make this change, please contact our support team immediately.</p>
-                  <p>Best regards,<br><strong>The LinkMe Security Team</strong></p>
-                </div>
-              </div>
-            </body>
-          </html>
-        `,
-        text: `Password Changed Successfully\n\nHello ${user.firstName},\n\nYour password has been successfully changed.\n\nIf you didn't make this change, please contact our support team immediately.\n\nBest regards,\nThe LinkMe Security Team`,
+        subject: template.subject,
+        html: template.html,
+        text: template.text,
       }).catch((error) => {
         console.error("Error sending password confirmation email:", error);
       });

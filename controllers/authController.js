@@ -106,7 +106,10 @@ passport.deserializeUser(async (id, done) => {
 // ==================== HELPER FUNCTIONS ====================
 
 const generateToken = (user) =>
-  jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "1w" });
+  jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "2h" });
+
+const generateRefreshToken = (user) =>
+  jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "7d" });
 
 /**
  * OTP Email template
@@ -389,6 +392,11 @@ const authController = {
 
       user.isVerified = true;
       user.otp = null;
+
+      const token = generateToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      user.refreshToken = refreshToken;
       await user.save();
 
       // Send welcome email after successful verification using template
@@ -398,9 +406,9 @@ const authController = {
         }
       );
 
-      const token = generateToken(user);
       res.status(200).json({
         token,
+        refreshToken,
         user: { id: user.id, email: user.email },
         message: "Email verified successfully! Welcome to LinkMe.",
       });
@@ -462,8 +470,14 @@ const authController = {
       }
 
       const token = generateToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      user.refreshToken = refreshToken;
+      await user.save();
+
       res.status(200).json({
         token,
+        refreshToken,
         user: { id: user.id, email: user.email, role: user.role },
       });
     } catch (error) {
@@ -490,9 +504,14 @@ const authController = {
       }
 
       const token = generateToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      user.refreshToken = refreshToken;
+      await user.save();
 
       res.status(200).json({
         token,
+        refreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -502,6 +521,95 @@ const authController = {
     } catch (error) {
       res.status(500).json({
         message: "Error logging in as admin",
+        error: error.message,
+      });
+    }
+  },
+
+  async refreshToken(req, res) {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          message: "Refresh token is required",
+        });
+      }
+
+      // Verify the refresh token
+      let decoded;
+      try {
+        decoded = jwt.verify(refreshToken, SECRET_KEY);
+      } catch (error) {
+        return res.status(401).json({
+          message: "Invalid or expired refresh token",
+        });
+      }
+
+      // Find the user and verify the refresh token matches
+      const user = await User.findOne({
+        where: {
+          id: decoded.id,
+          refreshToken: refreshToken,
+        },
+      });
+
+      if (!user) {
+        return res.status(401).json({
+          message: "Invalid refresh token",
+        });
+      }
+
+      // Generate new tokens
+      const newAccessToken = generateToken(user);
+      const newRefreshToken = generateRefreshToken(user);
+
+      // Update the refresh token in database
+      user.refreshToken = newRefreshToken;
+      await user.save();
+
+      res.status(200).json({
+        token: newAccessToken,
+        refreshToken: newRefreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      console.error("Refresh token error:", error);
+      res.status(500).json({
+        message: "Error refreshing token",
+        error: error.message,
+      });
+    }
+  },
+
+  async logout(req, res) {
+    try {
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          message: "User ID is required",
+        });
+      }
+
+      // Clear the refresh token from database
+      const user = await User.findByPk(userId);
+
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      }
+
+      res.status(200).json({
+        message: "Logged out successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Error logging out",
         error: error.message,
       });
     }
@@ -609,10 +717,15 @@ const authController = {
   googleAuth: passport.authenticate("google", { scope: ["profile", "email"] }),
   googleAuthCallback: [
     passport.authenticate("google", { failureRedirect: "/login" }),
-    (req, res) => {
+    async (req, res) => {
       const token = jwt.sign({ id: req.user.id }, SECRET_KEY, {
-        expiresIn: "1w",
+        expiresIn: "2h",
       });
+
+      const refreshToken = generateRefreshToken(req.user);
+
+      req.user.refreshToken = refreshToken;
+      await req.user.save();
 
       const user = {
         id: req.user.id,
@@ -623,7 +736,7 @@ const authController = {
 
       const userEncoded = encodeURIComponent(JSON.stringify(user));
       res.redirect(
-        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&user=${userEncoded}`
+        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&refreshToken=${refreshToken}&user=${userEncoded}`
       );
     },
   ],
@@ -631,10 +744,15 @@ const authController = {
   facebookAuth: passport.authenticate("facebook", { scope: ["email"] }),
   facebookAuthCallback: [
     passport.authenticate("facebook", { failureRedirect: "/login" }),
-    (req, res) => {
+    async (req, res) => {
       const token = jwt.sign({ id: req.user.id }, SECRET_KEY, {
-        expiresIn: "1w",
+        expiresIn: "2h",
       });
+
+      const refreshToken = generateRefreshToken(req.user);
+
+      req.user.refreshToken = refreshToken;
+      await req.user.save();
 
       const user = {
         id: req.user.id,
@@ -645,7 +763,7 @@ const authController = {
 
       const userEncoded = encodeURIComponent(JSON.stringify(user));
       res.redirect(
-        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&user=${userEncoded}`
+        `${process.env.FRONTEND_URL}/oauth-success?token=${token}&refreshToken=${refreshToken}&user=${userEncoded}`
       );
     },
   ],

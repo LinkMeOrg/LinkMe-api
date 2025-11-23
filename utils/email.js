@@ -4,15 +4,15 @@ const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Create Nodemailer transporter using Resend SMTP
-const transporter = nodemailer.createTransport({
-  host: "smtp.resend.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: "resend",
-    pass: process.env.RESEND_API_KEY,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   host: "smtp.resend.com",
+//   port: 465,
+//   secure: true,
+//   auth: {
+//     user: "resend",
+//     pass: process.env.RESEND_API_KEY,
+//   },
+// });
 
 /**
  * Send email using Nodemailer with Resend SMTP
@@ -34,6 +34,8 @@ const sendEmail = async ({
   from = process.env.EMAIL_FROM || "onboarding@resend.dev",
 }) => {
   try {
+    console.log("📧 Sending email via Resend SDK...");
+
     const data = await resend.emails.send({
       from,
       to: Array.isArray(to) ? to : [to],
@@ -896,13 +898,21 @@ const sendTemplatedEmail = async (to, templateKey, ...args) => {
 /**
  * Verify transporter connection
  */
+/**
+ * Verify Resend connection
+ */
 const verifyEmailConnection = async () => {
   try {
-    await transporter.verify();
-    console.log("✅ Email server is ready to send messages");
+    // Test if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY is not configured");
+      return false;
+    }
+    
+    console.log("✅ Resend API key is configured");
     return true;
   } catch (error) {
-    console.error("❌ Email server verification failed:", error);
+    console.error("❌ Email configuration check failed:", error);
     return false;
   }
 };
@@ -912,6 +922,5 @@ module.exports = {
   sendEmailResend,
   emailTemplates,
   sendTemplatedEmail,
-  transporter,
   verifyEmailConnection,
 };

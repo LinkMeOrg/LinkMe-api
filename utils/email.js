@@ -23,26 +23,30 @@ const transporter = nodemailer.createTransport({
  * @param {string} options.text - Plain text content
  * @param {string} options.from - Sender email
  */
+/**
+ * Send email using Resend SDK directly (works on all platforms)
+ */
 const sendEmail = async ({
   to,
   subject,
   html,
   text,
-  from = process.env.EMAIL_FROM || "noreply@yourdomain.com",
+  from = process.env.EMAIL_FROM || "onboarding@resend.dev",
 }) => {
   try {
-    const info = await transporter.sendMail({
+    const data = await resend.emails.send({
       from,
-      to: Array.isArray(to) ? to.join(", ") : to,
+      to: Array.isArray(to) ? to : [to],
       subject,
       html,
       text,
     });
 
-    console.log("✅ Email sent successfully:", info.messageId);
-    return { success: true, messageId: info.messageId };
+    console.log("✅ Email sent successfully via Resend SDK:", data.id);
+    return { success: true, messageId: data.id };
   } catch (error) {
-    console.error("❌ Error sending email:", error);
+    console.error("❌ Error sending email via Resend SDK:", error);
+    console.error("Error details:", error.message);
     throw error;
   }
 };

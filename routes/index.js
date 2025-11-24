@@ -6,12 +6,14 @@ const socialLinkRoutes = require("./socialLinkRoutes");
 const analyticsRoutes = require("./analyticsRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
 const adminDashboardRoutes = require("./adminDashboardRoutes");
+const orderRoutes = require("./orderRoutes");
 
 router.use("/profiles", profileRoutes);
 router.use("/social-links", socialLinkRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/admin/dashboard", adminDashboardRoutes);
+router.use("/orders", orderRoutes);
 
 router.get("/", (req, res) => {
   res.status(200).json({
@@ -43,6 +45,12 @@ router.get("/", (req, res) => {
         base: "/api/admin/dashboard",
         description: "Admin dashboard statistics endpoints",
         count: 2,
+      },
+      orders: {
+        // ← ADD THIS BLOCK
+        base: "/api/orders",
+        description: "Order management endpoints",
+        count: 7,
       },
     },
     documentation: "/api/docs",

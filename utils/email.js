@@ -592,9 +592,7 @@ const emailTemplates = {
       </div>
 
       <div class="button-container">
-        <a href="${
-          process.env.DASHBOARD_URL || "http://localhost:5174"
-        }" class="button">Go to Dashboard</a>
+        <a href="${process.env.FRONTEND_URL}" class="button">Go to Website</a>
       </div>
 
       <p class="text">Need help getting started? Our support team is here for you every step of the way.</p>

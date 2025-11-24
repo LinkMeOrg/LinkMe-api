@@ -728,8 +728,8 @@ const authController = {
         user.firstName,
         "Welcome to Your New Email ✅",
         newEmailMessage,
-        `${process.env.DASHBOARD_URL || process.env.FRONTEND_URL}/dashboard`,
-        "Go to Dashboard"
+        `${process.env.FRONTEND_URL}`,
+        "Go to Website"
       );
 
       sendEmail({

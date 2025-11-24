@@ -2,39 +2,7 @@ const { User, Profile } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-
-const nodemailer = require("nodemailer");
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 10,
-});
-
-const sendEmailChangeOTP = async (email, otp, firstName) => {
-  await transporter.sendMail({
-    to: email,
-    from: process.env.EMAIL_USER,
-    subject: "Verify Your New Email - LinkMe",
-    text: `Your OTP code is: ${otp}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Email Change Verification</h2>
-        <p>Hello ${firstName},</p>
-        <p>You requested to change your email address to this email.</p>
-        <p>Your OTP code is:</p>
-        <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
-        <p>This code will expire in 10 minutes.</p>
-        <p>If you didn't request this change, please ignore this email and secure your account.</p>
-      </div>
-    `,
-  });
-};
+const { sendOtpEmail } = require("../utils/email");
 
 // ============= EXISTING FUNCTIONS (UNCHANGED) =============
 
@@ -171,8 +139,17 @@ const requestEmailChange = async (req, res) => {
       pendingEmail: newEmail.toLowerCase().trim(),
     });
 
-    // Send OTP to NEW email
-    await sendEmailChangeOTP(newEmail, otp, user.firstName);
+    // Send OTP to NEW email using the utility function
+    try {
+      await sendOtpEmail(newEmail, otp, user.firstName);
+      console.log("✅ OTP email sent successfully to:", newEmail);
+    } catch (error) {
+      console.error("❌ Error sending OTP email:", error);
+      return res.status(500).json({
+        message: "Failed to send OTP email. Please try again.",
+        error: error.message,
+      });
+    }
 
     res.status(200).json({
       message: `OTP sent to ${newEmail}. Please check your email.`,

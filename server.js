@@ -8,6 +8,8 @@ const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const contactMessageRoutes = require("./routes/contactMessageRoutes");
 const adminDashboardRoutes = require("./routes/adminDashboardRoutes");
+const termsRoutes = require("./routes/termsAndConditionsRoutes");
+const privacyRoutes = require("./routes/privacyPolicyRoutes");
 const smartCardRoutes = require("./routes/index");
 
 dotenv.config();
@@ -60,6 +62,8 @@ app.use("/api", userRoutes);
 app.use("/api", contactMessageRoutes);
 app.use("/api", smartCardRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
+app.use("/api/terms", termsRoutes);
+app.use("/api/privacy-policy", privacyRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running!");

@@ -156,9 +156,27 @@ module.exports = (sequelize, DataTypes) => {
                 throw new Error("Invalid phone number");
               }
             } else if (this.platform === "whatsapp") {
-              const whatsappRegex = /^[\d\+]+$/;
-              if (!whatsappRegex.test(value.replace(/[\s\-\(\)]/g, ""))) {
-                throw new Error("Invalid WhatsApp number");
+              // WhatsApp can be stored as URL format: https://wa.me/XXXXXXXXXXX
+              // Extract the number from the URL or validate raw number
+              let numberToValidate = value;
+
+              // If it's a wa.me URL, extract the number
+              if (value.includes("wa.me/")) {
+                const match = value.match(/wa\.me\/(\d+)/);
+                if (match && match[1]) {
+                  numberToValidate = match[1];
+                } else {
+                  throw new Error("Invalid WhatsApp URL format");
+                }
+              }
+
+              // Remove any spaces, dashes, parentheses
+              const cleanNumber = numberToValidate.replace(/[\s\-\(\)]/g, "");
+
+              // Validate: must be digits only and between 9-15 characters
+              const whatsappRegex = /^\d{9,15}$/;
+              if (!whatsappRegex.test(cleanNumber)) {
+                throw new Error("WhatsApp number must be 9-15 digits");
               }
             } else {
               // Validate URL for other platforms

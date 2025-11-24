@@ -10,6 +10,7 @@ const {
   sendTemplatedEmail,
   sendEmail,
   emailTemplates,
+  sendOtpEmail,
 } = require("../utils/email");
 
 // ==================== PASSPORT CONFIGURATION ====================
@@ -112,135 +113,6 @@ const generateRefreshToken = (user) =>
   jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: "7d" });
 
 /**
- * OTP Email template
- */
-const otpEmailTemplate = (userName, otp) => ({
-  subject: "Your OTP for Email Verification ✉️",
-  html: `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6; 
-            color: #333; 
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-          }
-          .container { 
-            max-width: 600px; 
-            margin: 40px auto; 
-            background-color: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          }
-          .header { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            padding: 40px 20px; 
-            text-align: center;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 600;
-          }
-          .content { 
-            padding: 40px 30px;
-            text-align: center;
-          }
-          .content h2 {
-            color: #667eea;
-            margin-top: 0;
-            font-size: 24px;
-          }
-          .content p {
-            color: #555;
-            font-size: 16px;
-            margin: 16px 0;
-          }
-          .otp-box {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            font-size: 48px;
-            font-weight: bold;
-            letter-spacing: 10px;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 30px 0;
-            display: inline-block;
-          }
-          .info-box {
-            background-color: #FEF2F2;
-            border-left: 4px solid #EF4444;
-            padding: 16px;
-            margin: 24px 0;
-            border-radius: 4px;
-            text-align: left;
-          }
-          .footer { 
-            text-align: center; 
-            padding: 30px 20px;
-            background-color: #f9fafb;
-            color: #6b7280; 
-            font-size: 14px;
-            border-top: 1px solid #e5e7eb;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>✉️ Email Verification</h1>
-          </div>
-          <div class="content">
-            <h2>Hello ${userName || "there"}!</h2>
-            <p>Thank you for signing up with LinkMe. To complete your registration, please use the following OTP code:</p>
-            
-            <div class="otp-box">${otp}</div>
-
-            <div class="info-box">
-              <p style="margin: 0;"><strong>⚠️ Important:</strong></p>
-              <p style="margin: 8px 0 0 0; font-size: 14px;">
-                • This code will expire in 10 minutes<br>
-                • Do not share this code with anyone<br>
-                • If you didn't request this code, please ignore this email
-              </p>
-            </div>
-
-            <p>Best regards,<br><strong>The LinkMe Team</strong></p>
-          </div>
-          <div class="footer">
-            <p>© ${new Date().getFullYear()} LinkMe. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `,
-  text: `Email Verification\n\nHello ${
-    userName || "there"
-  }!\n\nYour OTP code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nBest regards,\nThe LinkMe Team`,
-});
-
-/**
- * Send OTP email using template
- */
-const sendOtpEmail = async (email, otp, userName) => {
-  const template = otpEmailTemplate(userName, otp);
-  await sendEmail({
-    to: email,
-    subject: template.subject,
-    html: template.html,
-    text: template.text,
-  });
-};
-
-/**
  * Password validation
  */
 const validatePassword = (password) => {
@@ -332,7 +204,7 @@ const authController = {
         return res.status(400).json({ message: "User already exists" });
 
       const otp = crypto.randomInt(100000, 999999).toString();
-      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
       const user = await User.create({
         firstName: firstName.trim(),
@@ -343,6 +215,7 @@ const authController = {
         phoneNumber: phoneNumber.trim(),
         dateOfBirth: dob,
         isVerified: false,
+        pendingEmail: null,
         otp,
         otpExpires,
       });
@@ -352,8 +225,12 @@ const authController = {
       console.log("📧 Email:", email);
       console.log("📧 OTP:", otp);
       console.log(
-        "📧 RESEND_API_KEY:",
-        process.env.RESEND_API_KEY ? "EXISTS" : "MISSING"
+        "📧 EMAIL_USER:",
+        process.env.EMAIL_USER ? "EXISTS" : "MISSING"
+      );
+      console.log(
+        "📧 EMAIL_PASSWORD:",
+        process.env.EMAIL_PASSWORD ? "EXISTS" : "MISSING"
       );
       console.log("📧 EMAIL_FROM:", process.env.EMAIL_FROM);
 
@@ -526,7 +403,7 @@ const authController = {
         token,
         refreshToken,
         user: {
-          id: req.user.id,
+          id: user.id,
           email: user.email,
           role: user.role,
         },

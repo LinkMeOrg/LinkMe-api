@@ -1,6 +1,5 @@
 const { Order, User, Profile } = require("../models");
 
-// Create new order
 exports.createOrder = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -78,7 +77,6 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// Get user's orders
 exports.getUserOrders = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -116,7 +114,6 @@ exports.getUserOrders = async (req, res) => {
   }
 };
 
-// Get single order details
 exports.getOrderById = async (req, res) => {
   try {
     const userId = req.user.id;

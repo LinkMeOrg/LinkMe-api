@@ -11,6 +11,13 @@ exports.createMessage = async (req, res) => {
         .json({ error: "Name, email, and message are required" });
     }
 
+    // Optional: Add a reasonable maximum length check (e.g., 5000 characters)
+    if (message.length > 5000) {
+      return res.status(400).json({
+        error: "Message is too long. Maximum 5000 characters allowed.",
+      });
+    }
+
     const newMessage = await ContactMessage.create({
       name,
       email,
@@ -56,7 +63,7 @@ exports.replyToMessage = async (req, res) => {
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        pass: process.env.EMAIL_PASSWORD,
       },
     });
 

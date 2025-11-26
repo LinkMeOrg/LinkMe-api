@@ -8,7 +8,7 @@ module.exports = (sequelize, DataTypes) => {
     {
       name: DataTypes.STRING,
       email: DataTypes.STRING,
-      message: DataTypes.STRING,
+      message: DataTypes.TEXT,
     },
     {
       sequelize,
